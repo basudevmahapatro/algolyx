@@ -72,6 +72,17 @@ export async function getMe(req, res){
         });
     }
 
+    const session = await sessionModel.findOne({
+        _id : decoded.sessionId,
+        revoked : false
+    });
+
+    if(!session){
+        return res.status(401).json({
+            message : "Session is revoked. Please login again."
+        });
+    }
+
     const user = await userModel.findById(decoded.id);
 
     if(!user){
@@ -121,7 +132,8 @@ export async function refreshToken(req,res){
 
     const newAccessToken = jwt.sign(
         {
-            id : decoded.id
+            id : decoded.id,
+            sessionId : session._id
         },
         config.JWT_SECRET,
         {
@@ -138,6 +150,9 @@ export async function refreshToken(req,res){
             expiresIn : "7d"
         }
     );  
+
+    session.refreshTokenHash = crypto.createHash("sha256").update(newRefreshToken).digest("hex");
+    await session.save();
 
     res.cookie("refreshToken", newRefreshToken, {
         httpOnly : true,
@@ -176,7 +191,7 @@ export async function logout(req,res){
 
     session.revoked = true;
     await session.save(); 
-
+ 
     res.clearCookie("refreshToken");
 
     res.status(201).json({
